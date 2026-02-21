@@ -48,6 +48,12 @@ export class MockAudioBinary extends EventEmitter {
     this.stderr.push(msg + "\n");
   }
 
+  /** Simulate an audio_level message */
+  emitAudioLevel(data: { rms: number; peak: number; fft: { freq: number; magnitude: number }[]; timestamp: number }): void {
+    const msg = JSON.stringify({ type: "audio_level", ...data });
+    this.stderr.push(msg + "\n");
+  }
+
   /** Simulate sending PCM data */
   emitPCMData(bytes?: number): void {
     const size = bytes ?? 6400; // 200ms of 16kHz 16-bit mono

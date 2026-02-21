@@ -1,6 +1,7 @@
 import Foundation
 import CoreAudio
 import AudioToolbox
+import Accelerate
 import Shared
 
 // MARK: - AudioObjectID helpers
@@ -69,16 +70,20 @@ final class AudioTapManager {
     private let chunkDurationMs: Int
     private let mute: Bool
     private let pcmWriter = PCMWriter()
+    private var analyzer: AudioAnalyzer?
 
     private var tapID: AudioObjectID = .unknown
     private var aggregateDeviceID: AudioObjectID = .unknown
     private var deviceProcID: AudioDeviceIOProcID?
     private var isRunning = false
 
-    init(format: AudioFormat, chunkDurationMs: Int, mute: Bool) {
+    init(format: AudioFormat, chunkDurationMs: Int, mute: Bool, enableLevels: Bool = false, fftBins: Int = 128, levelIntervalMs: Int = 50) {
         self.format = format
         self.chunkDurationMs = chunkDurationMs
         self.mute = mute
+        if enableLevels {
+            self.analyzer = AudioAnalyzer(sampleRate: format.sampleRate, fftBins: fftBins, intervalMs: levelIntervalMs)
+        }
     }
 
     /// Check if we have permission to create audio taps
@@ -166,6 +171,7 @@ final class AudioTapManager {
 
         // Step 5: Set up IO proc to receive audio via block-based API
         let writerRef = self.pcmWriter
+        let analyzerRef = self.analyzer
 
         let ioBlock: AudioDeviceIOBlock = { inNow, inInputData, inInputTime, outOutputData, inOutputTime in
             let bufferList = inInputData.pointee
@@ -176,6 +182,22 @@ final class AudioTapManager {
                 for buffer in buffers {
                     guard let data = buffer.mData, buffer.mDataByteSize > 0 else { continue }
                     writerRef.write(Data(bytes: data, count: Int(buffer.mDataByteSize)))
+
+                    if let analyzer = analyzerRef {
+                        let byteCount = Int(buffer.mDataByteSize)
+                        let sampleCount = byteCount / MemoryLayout<Int16>.size
+                        data.withMemoryRebound(to: Int16.self, capacity: sampleCount) { int16Ptr in
+                            if let result = analyzer.analyze(samples: int16Ptr, count: sampleCount) {
+                                let fftData = result.fft.map { ["freq": $0.freq, "magnitude": $0.magnitude] }
+                                Message.audioLevel(
+                                    rms: result.rms,
+                                    peak: result.peak,
+                                    fft: fftData,
+                                    timestamp: result.timestamp
+                                ).send()
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -223,6 +245,10 @@ final class AudioTapManager {
             tapID = .unknown
         }
         deviceProcID = nil
+    }
+
+    func getFrequencyBands() -> [Double]? {
+        return analyzer?.getFrequencyBands()
     }
 
     deinit {

@@ -130,6 +130,33 @@ describe("AudioProcess", () => {
     await expect(proc.start()).rejects.toThrow("ready message");
   });
 
+  it("emits audio_level events from stderr", async () => {
+    const proc = new AudioProcess({
+      binaryPath: "/fake/binary",
+      args: [],
+      name: "test-audio",
+      logLevel: "silent",
+    });
+
+    const levels: any[] = [];
+    proc.on("audio_level", (msg: any) => levels.push(msg));
+
+    const startPromise = proc.start();
+    setTimeout(() => {
+      mockBinary.emitReady();
+      setTimeout(() => {
+        mockBinary.emitAudioLevel({ rms: 0.5, peak: 0.8, fft: [{ freq: 125, magnitude: 0.4 }], timestamp: 123 });
+      }, 10);
+    }, 10);
+
+    await startPromise;
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(levels.length).toBe(1);
+    expect(levels[0].rms).toBe(0.5);
+    expect(levels[0].fft[0].freq).toBe(125);
+  });
+
   it("stops gracefully with SIGTERM", async () => {
     const proc = new AudioProcess({
       binaryPath: "/fake/binary",

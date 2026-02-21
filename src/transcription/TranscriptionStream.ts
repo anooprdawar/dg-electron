@@ -7,12 +7,14 @@ import type {
   DeepgramOptions,
   TranscriptEvent,
   UtteranceEndEvent,
+  BinaryMessage,
 } from "../types.js";
 import { Logger } from "../util/logger.js";
 
 export interface TranscriptionStreamEvents {
   transcript: (event: TranscriptEvent) => void;
   utterance_end: (event: UtteranceEndEvent) => void;
+  audio_level: (message: BinaryMessage) => void;
   error: (error: Error) => void;
   started: () => void;
   stopped: () => void;
@@ -53,6 +55,10 @@ export class TranscriptionStream extends EventEmitter {
     // Set up audio data forwarding
     this.source.on("data", (chunk: Buffer) => {
       this.socket.send(chunk);
+    });
+
+    this.source.on("audio_level", (msg: BinaryMessage) => {
+      this.emit("audio_level", msg);
     });
 
     // Set up transcript event handling

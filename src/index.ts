@@ -17,6 +17,13 @@ export type {
   MicOptions,
   DeepgramElectronConfig,
   DeepgramElectronEvents,
+  AudioLevelEvent,
+  AudioLevelPreset,
+  AudioLevelsConfig,
+  BatchProgressEvent,
+  InputDevice,
+  FFTBin,
+  TranscriptionMode,
 } from "./types.js";
 
 // Errors

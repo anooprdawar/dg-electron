@@ -2,14 +2,16 @@ import Foundation
 
 /// JSON messages sent over stderr to communicate with the Node.js host process
 public enum Message {
-    case ready(sampleRate: Int, channels: Int, bitDepth: Int, chunkDurationMs: Int)
+    case ready(sampleRate: Int, channels: Int, bitDepth: Int, chunkDurationMs: Int, frequencyBands: [Double]? = nil)
+
     case error(code: String, message: String)
     case stopped(reason: String)
+    case audioLevel(rms: Double, peak: Double, fft: [[String: Double]], timestamp: Double)
 
     public func send() {
-        let json: [String: Any]
+        var json: [String: Any]
         switch self {
-        case .ready(let sampleRate, let channels, let bitDepth, let chunkDurationMs):
+        case .ready(let sampleRate, let channels, let bitDepth, let chunkDurationMs, let frequencyBands):
             json = [
                 "type": "ready",
                 "sampleRate": sampleRate,
@@ -17,6 +19,9 @@ public enum Message {
                 "bitDepth": bitDepth,
                 "chunkDurationMs": chunkDurationMs
             ]
+            if let bands = frequencyBands {
+                json["frequencyBands"] = bands
+            }
         case .error(let code, let message):
             json = [
                 "type": "error",
@@ -27,6 +32,14 @@ public enum Message {
             json = [
                 "type": "stopped",
                 "reason": reason
+            ]
+        case .audioLevel(let rms, let peak, let fft, let timestamp):
+            json = [
+                "type": "audio_level",
+                "rms": rms,
+                "peak": peak,
+                "fft": fft,
+                "timestamp": timestamp
             ]
         }
 

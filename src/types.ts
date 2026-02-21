@@ -1,6 +1,48 @@
 /** Source of a transcript event */
 export type AudioSource = "system" | "mic";
 
+/** FFT frequency bin with labeled frequency */
+export interface FFTBin {
+  freq: number;
+  magnitude: number;
+}
+
+/** Audio level event for visualizations */
+export interface AudioLevelEvent {
+  source: AudioSource;
+  rms: number;
+  peak: number;
+  fft: FFTBin[];
+  timestamp: number;
+}
+
+/** Available audio input device */
+export interface InputDevice {
+  id: string;
+  name: string;
+  isDefault: boolean;
+}
+
+/** Batch transcription progress */
+export interface BatchProgressEvent {
+  phase: "recording" | "uploading" | "processing";
+  bytesRecorded?: number;
+}
+
+/** Audio level configuration presets */
+export type AudioLevelPreset = "spectrogram" | "vu-meter" | "waveform";
+
+/** Audio level configuration */
+export interface AudioLevelsConfig {
+  preset?: AudioLevelPreset;
+  enabled?: boolean;
+  fftBins?: number;
+  intervalMs?: number;
+}
+
+/** Transcription mode */
+export type TranscriptionMode = "streaming" | "batch";
+
 /** Permission status for an audio source */
 export type PermissionStatus = "granted" | "denied" | "unknown";
 
@@ -97,6 +139,8 @@ export interface MicOptions {
   sampleRate?: number;
   /** Chunk duration in ms for buffering (default: 200) */
   chunkDurationMs?: number;
+  /** Specific audio input device ID */
+  deviceId?: string;
 }
 
 /** Top-level configuration for DeepgramElectron */
@@ -109,6 +153,10 @@ export interface DeepgramElectronConfig {
   mic?: MicOptions;
   /** Log level */
   logLevel?: "debug" | "info" | "warn" | "error" | "silent";
+  /** Transcription mode: streaming (default) or batch */
+  mode?: TranscriptionMode;
+  /** Audio level reporting configuration */
+  audioLevels?: AudioLevelsConfig;
 }
 
 /** Events emitted by DeepgramElectron */
@@ -117,6 +165,8 @@ export interface DeepgramElectronEvents {
   system_transcript: (event: TranscriptEvent) => void;
   mic_transcript: (event: TranscriptEvent) => void;
   utterance_end: (event: UtteranceEndEvent) => void;
+  audio_level: (event: AudioLevelEvent) => void;
+  batch_progress: (event: BatchProgressEvent) => void;
   started: () => void;
   stopped: () => void;
   error: (error: Error) => void;
@@ -124,7 +174,7 @@ export interface DeepgramElectronEvents {
 
 /** Control message from Swift binary over stderr */
 export interface BinaryMessage {
-  type: "ready" | "error" | "stopped";
+  type: "ready" | "error" | "stopped" | "audio_level";
   sampleRate?: number;
   channels?: number;
   bitDepth?: number;
@@ -132,4 +182,9 @@ export interface BinaryMessage {
   code?: string;
   message?: string;
   reason?: string;
+  frequencyBands?: number[];
+  rms?: number;
+  peak?: number;
+  fft?: { freq: number; magnitude: number }[];
+  timestamp?: number;
 }
