@@ -1,6 +1,7 @@
 import Foundation
 import AVFAudio
 import AVFoundation
+import CoreAudio
 import Shared
 
 /// Captures microphone audio using AVAudioEngine and writes PCM to stdout
@@ -9,6 +10,7 @@ final class MicCaptureEngine {
     private let chunkDurationMs: Int
     private let pcmWriter = PCMWriter()
     private var audioEngine: AVAudioEngine?
+    private var analyzer: AudioAnalyzer?
 
     enum PermissionStatus: String {
         case granted
@@ -16,9 +18,12 @@ final class MicCaptureEngine {
         case undetermined
     }
 
-    init(format: AudioFormat, chunkDurationMs: Int) {
+    init(format: AudioFormat, chunkDurationMs: Int, enableLevels: Bool = false, fftBins: Int = 128, levelIntervalMs: Int = 50) {
         self.format = format
         self.chunkDurationMs = chunkDurationMs
+        if enableLevels {
+            self.analyzer = AudioAnalyzer(sampleRate: format.sampleRate, fftBins: fftBins, intervalMs: levelIntervalMs)
+        }
     }
 
     /// Check microphone permission status
@@ -61,6 +66,7 @@ final class MicCaptureEngine {
         }
 
         let writerRef = self.pcmWriter
+        let analyzerRef = self.analyzer
         let framesPerChunk = AVAudioFrameCount(format.sampleRate * Double(chunkDurationMs) / 1000.0)
 
         inputNode.installTap(onBus: 0, bufferSize: framesPerChunk, format: inputFormat) { buffer, _ in
@@ -90,6 +96,19 @@ final class MicCaptureEngine {
             let byteCount = Int(convertedBuffer.frameLength) * MemoryLayout<Int16>.size
             let data = Data(bytes: int16Data[0], count: byteCount)
             writerRef.write(data)
+
+            if let analyzer = analyzerRef {
+                let sampleCount = Int(convertedBuffer.frameLength)
+                if let result = analyzer.analyze(samples: int16Data[0], count: sampleCount) {
+                    let fftData = result.fft.map { ["freq": $0.freq, "magnitude": $0.magnitude] }
+                    Message.audioLevel(
+                        rms: result.rms,
+                        peak: result.peak,
+                        fft: fftData,
+                        timestamp: result.timestamp
+                    ).send()
+                }
+            }
         }
 
         engine.prepare()
@@ -101,6 +120,10 @@ final class MicCaptureEngine {
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
+    }
+
+    func getFrequencyBands() -> [Double]? {
+        return analyzer?.getFrequencyBands()
     }
 
     deinit {

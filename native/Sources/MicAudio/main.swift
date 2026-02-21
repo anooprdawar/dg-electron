@@ -6,6 +6,9 @@ import Shared
 var sampleRate: Int = 16000
 var chunkDurationMs: Int = 200
 var checkPermissionOnly: Bool = false
+var enableLevels: Bool = false
+var levelIntervalMs: Int = 50
+var fftBins: Int = 128
 
 var args = CommandLine.arguments.dropFirst()
 while let arg = args.first {
@@ -27,6 +30,22 @@ while let arg = args.first {
         args = args.dropFirst()
     case "--check-permission":
         checkPermissionOnly = true
+    case "--enable-levels":
+        enableLevels = true
+    case "--level-interval-ms":
+        guard let next = args.first, let value = Int(next) else {
+            Message.error(code: ErrorCode.invalidArgs, message: "Missing value for --level-interval-ms").send()
+            exit(1)
+        }
+        levelIntervalMs = value
+        args = args.dropFirst()
+    case "--fft-bins":
+        guard let next = args.first, let value = Int(next) else {
+            Message.error(code: ErrorCode.invalidArgs, message: "Missing value for --fft-bins").send()
+            exit(1)
+        }
+        fftBins = value
+        args = args.dropFirst()
     default:
         Message.error(code: ErrorCode.invalidArgs, message: "Unknown argument: \(arg)").send()
         exit(1)
@@ -41,7 +60,7 @@ let format = AudioFormat(
     bitDepth: 16
 )
 
-let engine = MicCaptureEngine(format: format, chunkDurationMs: chunkDurationMs)
+let engine = MicCaptureEngine(format: format, chunkDurationMs: chunkDurationMs, enableLevels: enableLevels, fftBins: fftBins, levelIntervalMs: levelIntervalMs)
 
 if checkPermissionOnly {
     let status = engine.checkPermission()
@@ -79,7 +98,7 @@ intSource.resume()
 // Start capture
 do {
     try engine.start()
-    Message.ready(sampleRate: sampleRate, channels: 1, bitDepth: 16, chunkDurationMs: chunkDurationMs).send()
+    Message.ready(sampleRate: sampleRate, channels: 1, bitDepth: 16, chunkDurationMs: chunkDurationMs, frequencyBands: engine.getFrequencyBands()).send()
 } catch {
     Message.error(code: ErrorCode.captureError, message: error.localizedDescription).send()
     exit(1)
