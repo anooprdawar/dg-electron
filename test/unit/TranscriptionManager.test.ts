@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { TranscriptEvent } from "../../src/types.js";
+import type {
+  TranscriptEvent,
+  AudioLevelEvent,
+  InputDevice,
+  BatchProgressEvent,
+  DeepgramElectronConfig,
+  AudioLevelsConfig,
+  TranscriptionMode,
+  FFTBin,
+} from "../../src/types.js";
 
 // We test the public API surface (types, events, configuration validation)
 // without actually spawning binaries or connecting to Deepgram
@@ -42,6 +51,64 @@ describe("TranscriptionManager types", () => {
   });
 });
 
+describe("AudioLevelEvent type", () => {
+  it("AudioLevelEvent has required fields", () => {
+    const event: AudioLevelEvent = {
+      source: "mic",
+      rms: 0.5,
+      peak: 0.9,
+      fft: [
+        { freq: 440, magnitude: 0.8 },
+        { freq: 880, magnitude: 0.3 },
+      ],
+      timestamp: Date.now(),
+    };
+
+    expect(event.source).toBe("mic");
+    expect(event.rms).toBe(0.5);
+    expect(event.peak).toBe(0.9);
+    expect(event.fft.length).toBe(2);
+    expect(event.fft[0].freq).toBe(440);
+    expect(event.fft[0].magnitude).toBe(0.8);
+    expect(typeof event.timestamp).toBe("number");
+  });
+});
+
+describe("InputDevice type", () => {
+  it("InputDevice has required fields", () => {
+    const device: InputDevice = {
+      id: "device-1",
+      name: "Built-in Microphone",
+      isDefault: true,
+    };
+
+    expect(device.id).toBe("device-1");
+    expect(device.name).toBe("Built-in Microphone");
+    expect(device.isDefault).toBe(true);
+  });
+});
+
+describe("BatchProgressEvent type", () => {
+  it("BatchProgressEvent has required fields", () => {
+    const event: BatchProgressEvent = {
+      phase: "recording",
+    };
+
+    expect(event.phase).toBe("recording");
+    expect(event.bytesRecorded).toBeUndefined();
+  });
+
+  it("BatchProgressEvent supports optional bytesRecorded", () => {
+    const event: BatchProgressEvent = {
+      phase: "uploading",
+      bytesRecorded: 1024000,
+    };
+
+    expect(event.phase).toBe("uploading");
+    expect(event.bytesRecorded).toBe(1024000);
+  });
+});
+
 describe("TranscriptionManager configuration", () => {
   it("config type accepts minimal configuration", () => {
     const config = {
@@ -81,6 +148,41 @@ describe("TranscriptionManager configuration", () => {
     expect(config.systemAudio.sampleRate).toBe(16000);
     expect(config.mic.enabled).toBe(true);
     expect(config.deepgram.model).toBe("nova-3");
+  });
+
+  it("config accepts mode and audioLevels", () => {
+    const config: DeepgramElectronConfig = {
+      deepgram: {
+        apiKey: "test-key",
+      },
+      mode: "batch",
+      audioLevels: {
+        preset: "spectrogram",
+        enabled: true,
+        fftBins: 64,
+        intervalMs: 50,
+      },
+    };
+
+    expect(config.mode).toBe("batch");
+    expect(config.audioLevels?.preset).toBe("spectrogram");
+    expect(config.audioLevels?.enabled).toBe(true);
+    expect(config.audioLevels?.fftBins).toBe(64);
+    expect(config.audioLevels?.intervalMs).toBe(50);
+  });
+
+  it("config accepts mic deviceId", () => {
+    const config: DeepgramElectronConfig = {
+      deepgram: {
+        apiKey: "test-key",
+      },
+      mic: {
+        enabled: true,
+        deviceId: "custom-device-id",
+      },
+    };
+
+    expect(config.mic?.deviceId).toBe("custom-device-id");
   });
 });
 
