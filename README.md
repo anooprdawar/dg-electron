@@ -7,6 +7,9 @@ Live system audio + microphone transcription for Electron apps on macOS. Uses Co
 - Capture **system audio** (all apps or specific processes) via Core Audio Taps
 - Capture **microphone** input via AVAudioEngine
 - Real-time **transcription** powered by Deepgram Nova-3
+- **Batch transcription** — record audio then upload for a full transcript
+- **Audio levels** — real-time RMS, peak, and FFT (spectrogram) data
+- **Mic selection** — enumerate input devices and select by ID
 - Labeled transcript events (`system` / `mic`)
 - Zero native build step for consumers (prebuilt universal macOS binaries)
 - Single runtime dependency (`ws`)
@@ -80,6 +83,12 @@ const dg = new DeepgramElectron({
   mic: {
     enabled: true,           // default: true
     sampleRate: 16000,       // default: 16000
+    deviceId: "BuiltInMicrophoneDevice",  // optional: select specific mic
+  },
+  audioLevels: {
+    enabled: true,           // default: false
+    intervalMs: 100,         // how often to emit levels (ms)
+    fftBins: 64,             // 0 = no FFT, 64/128 = frequency bins
   },
   logLevel: "warn",          // "debug" | "info" | "warn" | "error" | "silent"
 });
@@ -119,10 +128,40 @@ dg.on("utterance_end", (event) => {
   event.last_word_end;  // number | undefined
 });
 
+// Audio levels (requires audioLevels.enabled = true)
+dg.on("audio_level", (event) => {
+  event.source;      // "system" | "mic"
+  event.rms;         // number (0-1), average volume
+  event.peak;        // number (0-1), loudest sample
+  event.fft;         // Array<{ freq, magnitude }> — empty if fftBins = 0
+  event.timestamp;   // number
+});
+
 // Lifecycle
 dg.on("started", () => { /* all streams active */ });
 dg.on("stopped", () => { /* all streams stopped */ });
 dg.on("error", (err) => { /* handle errors */ });
+```
+
+### `DeepgramElectron.listDevices(): Promise<Device[]>`
+
+List available input devices for mic selection.
+
+```typescript
+const devices = await DeepgramElectron.listDevices();
+// [{ id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", isDefault: true }, ...]
+```
+
+### `DeepgramElectron.transcribeBatch(audioBuffer, config): Promise<BatchResult>`
+
+Transcribe a pre-recorded audio buffer via Deepgram's pre-recorded API.
+
+```typescript
+const result = await DeepgramElectron.transcribeBatch(buffer, {
+  apiKey: process.env.DEEPGRAM_API_KEY!,
+  model: "nova-3",
+});
+// { transcript: "hello world", confidence: 0.98, words: [...] }
 ```
 
 ### `DeepgramElectron.checkPermissions(): Promise<PermissionResult>`
