@@ -1,13 +1,15 @@
 import { AudioProcess } from "./AudioProcess.js";
 import { resolveBinaryPath } from "../util/binary.js";
-import type { SystemAudioOptions } from "../types.js";
+import { resolveAudioLevels } from "./audioLevelPresets.js";
+import type { SystemAudioOptions, AudioLevelsConfig } from "../types.js";
 
 const BINARY_NAME = "dg-system-audio";
 
 export class SystemAudioSource extends AudioProcess {
   constructor(
     options: SystemAudioOptions = {},
-    logLevel?: "debug" | "info" | "warn" | "error" | "silent"
+    logLevel?: "debug" | "info" | "warn" | "error" | "silent",
+    audioLevels?: AudioLevelsConfig
   ) {
     const args: string[] = [];
 
@@ -27,6 +29,13 @@ export class SystemAudioSource extends AudioProcess {
 
     if (options.excludeProcesses?.length) {
       args.push("--exclude-processes", options.excludeProcesses.join(","));
+    }
+
+    const levels = resolveAudioLevels(audioLevels);
+    if (levels.enabled) {
+      args.push("--enable-levels");
+      args.push("--level-interval-ms", String(levels.intervalMs));
+      args.push("--fft-bins", String(levels.fftBins));
     }
 
     super({
