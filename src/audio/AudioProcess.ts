@@ -15,6 +15,7 @@ export interface AudioProcessOptions {
 export interface AudioProcessEvents {
   data: (chunk: Buffer) => void;
   ready: (message: BinaryMessage) => void;
+  audio_level: (message: BinaryMessage) => void;
   error: (error: Error) => void;
   exit: (code: number | null, signal: string | null) => void;
 }
@@ -101,6 +102,8 @@ export class AudioProcess extends EventEmitter {
             } else {
               this.emit("error", error);
             }
+          } else if (message.type === "audio_level") {
+            this.emit("audio_level", message);
           }
         });
       });
