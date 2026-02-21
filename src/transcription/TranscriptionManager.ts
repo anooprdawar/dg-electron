@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { TranscriptionStream } from "./TranscriptionStream.js";
+import { BatchTranscriptionStream } from "./BatchTranscriptionStream.js";
 import { SystemAudioSource } from "../audio/SystemAudioSource.js";
 import { MicAudioSource } from "../audio/MicAudioSource.js";
 import type {
@@ -8,6 +9,7 @@ import type {
   TranscriptEvent,
   UtteranceEndEvent,
   AudioLevelEvent,
+  BatchProgressEvent,
   InputDevice,
   PermissionResult,
   PermissionStatus,
@@ -16,6 +18,8 @@ import type {
 import { assertPlatform } from "../util/platform.js";
 import { Logger } from "../util/logger.js";
 
+type AnyStream = TranscriptionStream | BatchTranscriptionStream;
+
 /**
  * Main public API class for @deepgram/electron.
  * Manages system audio and microphone transcription streams.
@@ -23,8 +27,8 @@ import { Logger } from "../util/logger.js";
 export class DeepgramElectron extends EventEmitter {
   private readonly config: DeepgramElectronConfig;
   private readonly logger: Logger;
-  private systemStream: TranscriptionStream | null = null;
-  private micStream: TranscriptionStream | null = null;
+  private systemStream: AnyStream | null = null;
+  private micStream: AnyStream | null = null;
   private running = false;
 
   constructor(config: DeepgramElectronConfig) {
@@ -47,7 +51,8 @@ export class DeepgramElectron extends EventEmitter {
       throw new Error("At least one audio source must be enabled");
     }
 
-    this.logger.info("Starting transcription", { systemEnabled, micEnabled });
+    const mode = this.config.mode ?? "streaming";
+    this.logger.info("Starting transcription", { systemEnabled, micEnabled, mode });
 
     const startPromises: Promise<void>[] = [];
 
@@ -58,13 +63,24 @@ export class DeepgramElectron extends EventEmitter {
         this.config.logLevel,
         this.config.audioLevels
       );
-      this.systemStream = new TranscriptionStream(
-        source,
-        this.config.deepgram,
-        this.config.systemAudio?.sampleRate ?? 16000,
-        "system",
-        this.config.logLevel
-      );
+
+      if (mode === "batch") {
+        this.systemStream = new BatchTranscriptionStream(
+          source,
+          this.config.deepgram,
+          this.config.systemAudio?.sampleRate ?? 16000,
+          "system",
+          this.config.logLevel
+        );
+      } else {
+        this.systemStream = new TranscriptionStream(
+          source,
+          this.config.deepgram,
+          this.config.systemAudio?.sampleRate ?? 16000,
+          "system",
+          this.config.logLevel
+        );
+      }
       this.wireStreamEvents(this.systemStream, "system");
       startPromises.push(this.systemStream.start());
     }
@@ -76,13 +92,24 @@ export class DeepgramElectron extends EventEmitter {
         this.config.logLevel,
         this.config.audioLevels
       );
-      this.micStream = new TranscriptionStream(
-        source,
-        this.config.deepgram,
-        this.config.mic?.sampleRate ?? 16000,
-        "mic",
-        this.config.logLevel
-      );
+
+      if (mode === "batch") {
+        this.micStream = new BatchTranscriptionStream(
+          source,
+          this.config.deepgram,
+          this.config.mic?.sampleRate ?? 16000,
+          "mic",
+          this.config.logLevel
+        );
+      } else {
+        this.micStream = new TranscriptionStream(
+          source,
+          this.config.deepgram,
+          this.config.mic?.sampleRate ?? 16000,
+          "mic",
+          this.config.logLevel
+        );
+      }
       this.wireStreamEvents(this.micStream, "mic");
       startPromises.push(this.micStream.start());
     }
@@ -191,7 +218,7 @@ export class DeepgramElectron extends EventEmitter {
     listener: DeepgramElectronEvents[K]
   ) => this;
 
-  private wireStreamEvents(stream: TranscriptionStream, source: "system" | "mic"): void {
+  private wireStreamEvents(stream: AnyStream, source: "system" | "mic"): void {
     stream.on("transcript", (event: TranscriptEvent) => {
       this.emit("transcript", event);
       if (event.source === "system") {
@@ -217,6 +244,10 @@ export class DeepgramElectron extends EventEmitter {
         timestamp: msg.timestamp ?? 0,
       };
       this.emit("audio_level", event);
+    });
+
+    stream.on("batch_progress", (event: BatchProgressEvent) => {
+      this.emit("batch_progress", event);
     });
 
     stream.on("error", (err: Error) => {
