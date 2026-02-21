@@ -3,6 +3,7 @@ import Foundation
 /// JSON messages sent over stderr to communicate with the Node.js host process
 public enum Message {
     case ready(sampleRate: Int, channels: Int, bitDepth: Int, chunkDurationMs: Int, frequencyBands: [Double]? = nil)
+
     case error(code: String, message: String)
     case stopped(reason: String)
     case audioLevel(rms: Double, peak: Double, fft: [[String: Double]], timestamp: Double)

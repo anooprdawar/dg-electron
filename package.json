@@ -16,7 +16,9 @@
     "dist/",
     "bin/"
   ],
-  "os": ["darwin"],
+  "os": [
+    "darwin"
+  ],
   "scripts": {
     "build": "tsup",
     "build:native": "cd native && ./scripts/build-universal.sh",
@@ -45,6 +47,7 @@
     "@types/node": "^20.11.0",
     "@types/ws": "^8.5.10",
     "tsup": "^8.0.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.3.0",
     "vitest": "^2.0.0"
   },
