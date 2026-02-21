@@ -7,8 +7,11 @@ import type {
   DeepgramElectronEvents,
   TranscriptEvent,
   UtteranceEndEvent,
+  AudioLevelEvent,
+  InputDevice,
   PermissionResult,
   PermissionStatus,
+  BinaryMessage,
 } from "../types.js";
 import { assertPlatform } from "../util/platform.js";
 import { Logger } from "../util/logger.js";
@@ -52,7 +55,8 @@ export class DeepgramElectron extends EventEmitter {
     if (systemEnabled) {
       const source = new SystemAudioSource(
         this.config.systemAudio,
-        this.config.logLevel
+        this.config.logLevel,
+        this.config.audioLevels
       );
       this.systemStream = new TranscriptionStream(
         source,
@@ -61,13 +65,17 @@ export class DeepgramElectron extends EventEmitter {
         "system",
         this.config.logLevel
       );
-      this.wireStreamEvents(this.systemStream);
+      this.wireStreamEvents(this.systemStream, "system");
       startPromises.push(this.systemStream.start());
     }
 
     // Set up mic stream
     if (micEnabled) {
-      const source = new MicAudioSource(this.config.mic, this.config.logLevel);
+      const source = new MicAudioSource(
+        this.config.mic,
+        this.config.logLevel,
+        this.config.audioLevels
+      );
       this.micStream = new TranscriptionStream(
         source,
         this.config.deepgram,
@@ -75,7 +83,7 @@ export class DeepgramElectron extends EventEmitter {
         "mic",
         this.config.logLevel
       );
-      this.wireStreamEvents(this.micStream);
+      this.wireStreamEvents(this.micStream, "mic");
       startPromises.push(this.micStream.start());
     }
 
@@ -154,6 +162,14 @@ export class DeepgramElectron extends EventEmitter {
     return { systemAudio, microphone };
   }
 
+  /** List available microphone input devices */
+  static async listInputDevices(
+    logLevel?: "debug" | "info" | "warn" | "error" | "silent"
+  ): Promise<InputDevice[]> {
+    const json = await MicAudioSource.listDevices(logLevel);
+    return JSON.parse(json) as InputDevice[];
+  }
+
   // Type-safe event emitter overrides
   declare on: <K extends keyof DeepgramElectronEvents>(
     event: K,
@@ -175,7 +191,7 @@ export class DeepgramElectron extends EventEmitter {
     listener: DeepgramElectronEvents[K]
   ) => this;
 
-  private wireStreamEvents(stream: TranscriptionStream): void {
+  private wireStreamEvents(stream: TranscriptionStream, source: "system" | "mic"): void {
     stream.on("transcript", (event: TranscriptEvent) => {
       this.emit("transcript", event);
       if (event.source === "system") {
@@ -187,6 +203,20 @@ export class DeepgramElectron extends EventEmitter {
 
     stream.on("utterance_end", (event: UtteranceEndEvent) => {
       this.emit("utterance_end", event);
+    });
+
+    stream.on("audio_level", (msg: BinaryMessage) => {
+      const event: AudioLevelEvent = {
+        source,
+        rms: msg.rms ?? 0,
+        peak: msg.peak ?? 0,
+        fft: (msg.fft ?? []).map(bin => ({
+          freq: bin.freq,
+          magnitude: bin.magnitude,
+        })),
+        timestamp: msg.timestamp ?? 0,
+      };
+      this.emit("audio_level", event);
     });
 
     stream.on("error", (err: Error) => {
