@@ -9,6 +9,9 @@ var muteOutput: Bool = false
 var includeProcesses: [pid_t] = []
 var excludeProcesses: [pid_t] = []
 var checkPermissionOnly: Bool = false
+var enableLevels: Bool = false
+var levelIntervalMs: Int = 50
+var fftBins: Int = 128
 
 var args = CommandLine.arguments.dropFirst()
 while let arg = args.first {
@@ -46,6 +49,22 @@ while let arg = args.first {
         args = args.dropFirst()
     case "--check-permission":
         checkPermissionOnly = true
+    case "--enable-levels":
+        enableLevels = true
+    case "--level-interval-ms":
+        guard let next = args.first, let value = Int(next) else {
+            Message.error(code: ErrorCode.invalidArgs, message: "Missing value for --level-interval-ms").send()
+            exit(1)
+        }
+        levelIntervalMs = value
+        args = args.dropFirst()
+    case "--fft-bins":
+        guard let next = args.first, let value = Int(next) else {
+            Message.error(code: ErrorCode.invalidArgs, message: "Missing value for --fft-bins").send()
+            exit(1)
+        }
+        fftBins = value
+        args = args.dropFirst()
     default:
         Message.error(code: ErrorCode.invalidArgs, message: "Unknown argument: \(arg)").send()
         exit(1)
@@ -61,7 +80,7 @@ if #available(macOS 14.2, *) {
         bitDepth: 16
     )
 
-    let manager = AudioTapManager(format: format, chunkDurationMs: chunkDurationMs, mute: muteOutput)
+    let manager = AudioTapManager(format: format, chunkDurationMs: chunkDurationMs, mute: muteOutput, enableLevels: enableLevels, fftBins: fftBins, levelIntervalMs: levelIntervalMs)
 
     if checkPermissionOnly {
         let hasPermission = manager.checkPermission()
@@ -101,7 +120,7 @@ if #available(macOS 14.2, *) {
             includeProcesses: includeProcesses,
             excludeProcesses: excludeProcesses
         )
-        Message.ready(sampleRate: sampleRate, channels: 1, bitDepth: 16, chunkDurationMs: chunkDurationMs).send()
+        Message.ready(sampleRate: sampleRate, channels: 1, bitDepth: 16, chunkDurationMs: chunkDurationMs, frequencyBands: manager.getFrequencyBands()).send()
     } catch {
         Message.error(code: ErrorCode.captureError, message: error.localizedDescription).send()
         exit(1)
