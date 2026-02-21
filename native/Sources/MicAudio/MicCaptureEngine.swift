@@ -4,6 +4,12 @@ import AVFoundation
 import CoreAudio
 import Shared
 
+struct AudioInputDevice {
+    let id: String
+    let name: String
+    let isDefault: Bool
+}
+
 /// Captures microphone audio using AVAudioEngine and writes PCM to stdout
 final class MicCaptureEngine {
     private let format: AudioFormat
@@ -11,6 +17,7 @@ final class MicCaptureEngine {
     private let pcmWriter = PCMWriter()
     private var audioEngine: AVAudioEngine?
     private var analyzer: AudioAnalyzer?
+    private let deviceId: String?
 
     enum PermissionStatus: String {
         case granted
@@ -18,9 +25,10 @@ final class MicCaptureEngine {
         case undetermined
     }
 
-    init(format: AudioFormat, chunkDurationMs: Int, enableLevels: Bool = false, fftBins: Int = 128, levelIntervalMs: Int = 50) {
+    init(format: AudioFormat, chunkDurationMs: Int, enableLevels: Bool = false, fftBins: Int = 128, levelIntervalMs: Int = 50, deviceId: String? = nil) {
         self.format = format
         self.chunkDurationMs = chunkDurationMs
+        self.deviceId = deviceId
         if enableLevels {
             self.analyzer = AudioAnalyzer(sampleRate: format.sampleRate, fftBins: fftBins, intervalMs: levelIntervalMs)
         }
@@ -40,10 +48,152 @@ final class MicCaptureEngine {
         }
     }
 
+    static func listDevices() -> [AudioInputDevice] {
+        let defaultID = getDefaultInputDeviceID()
+
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr else {
+            return []
+        }
+
+        let count = Int(size) / MemoryLayout<AudioDeviceID>.size
+        var deviceIDs = [AudioDeviceID](repeating: 0, count: count)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceIDs) == noErr else {
+            return []
+        }
+
+        var devices: [AudioInputDevice] = []
+        for deviceID in deviceIDs {
+            // Check if device has input channels
+            var inputAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreamConfiguration,
+                mScope: kAudioObjectPropertyScopeInput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var streamSize: UInt32 = 0
+            guard AudioObjectGetPropertyDataSize(deviceID, &inputAddress, 0, nil, &streamSize) == noErr,
+                  streamSize > 0 else { continue }
+
+            let bufferListData = UnsafeMutableRawPointer.allocate(byteCount: Int(streamSize), alignment: MemoryLayout<AudioBufferList>.alignment)
+            defer { bufferListData.deallocate() }
+            guard AudioObjectGetPropertyData(deviceID, &inputAddress, 0, nil, &streamSize, bufferListData) == noErr else { continue }
+            let bufferList = bufferListData.assumingMemoryBound(to: AudioBufferList.self).pointee
+
+            // Sum up input channels across all buffers
+            var totalChannels: UInt32 = 0
+            let bufferCount = Int(bufferList.mNumberBuffers)
+            if bufferCount > 0 {
+                withUnsafePointer(to: bufferList.mBuffers) { ptr in
+                    let buffers = UnsafeBufferPointer(start: ptr, count: bufferCount)
+                    for buf in buffers {
+                        totalChannels += buf.mNumberChannels
+                    }
+                }
+            }
+            guard totalChannels > 0 else { continue }
+
+            // Get device name
+            var nameAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioObjectPropertyName,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var name: CFString = "" as CFString
+            var nameSize = UInt32(MemoryLayout<CFString>.size)
+            AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &nameSize, &name)
+
+            // Get device UID
+            var uidAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceUID,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var uid: CFString = "" as CFString
+            var uidSize = UInt32(MemoryLayout<CFString>.size)
+            AudioObjectGetPropertyData(deviceID, &uidAddress, 0, nil, &uidSize, &uid)
+
+            devices.append(AudioInputDevice(
+                id: uid as String,
+                name: name as String,
+                isDefault: deviceID == defaultID
+            ))
+        }
+        return devices
+    }
+
+    private static func getDefaultInputDeviceID() -> AudioDeviceID {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceID)
+        return deviceID
+    }
+
+    private func setInputDevice(engine: AVAudioEngine, uid: String) throws {
+        // Find device ID by UID
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size)
+        let count = Int(size) / MemoryLayout<AudioDeviceID>.size
+        var deviceIDs = [AudioDeviceID](repeating: 0, count: count)
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceIDs)
+
+        for deviceID in deviceIDs {
+            var uidAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceUID,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var deviceUID: CFString = "" as CFString
+            var uidSize = UInt32(MemoryLayout<CFString>.size)
+            AudioObjectGetPropertyData(deviceID, &uidAddress, 0, nil, &uidSize, &deviceUID)
+
+            if (deviceUID as String) == uid {
+                let audioUnit = engine.inputNode.audioUnit!
+                var inputDeviceID = deviceID
+                let status = AudioUnitSetProperty(
+                    audioUnit,
+                    kAudioOutputUnitProperty_CurrentDevice,
+                    kAudioUnitScope_Global,
+                    0,
+                    &inputDeviceID,
+                    UInt32(MemoryLayout<AudioDeviceID>.size)
+                )
+                guard status == noErr else {
+                    throw NSError(domain: "MicCapture", code: Int(status),
+                        userInfo: [NSLocalizedDescriptionKey: "Failed to set input device (error \(status))"])
+                }
+                return
+            }
+        }
+
+        let available = MicCaptureEngine.listDevices().map { "\($0.name) (\($0.id))" }.joined(separator: ", ")
+        throw NSError(domain: "MicCapture", code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "Device not found: \(uid). Available: \(available)"])
+    }
+
     /// Start capturing microphone audio
     func start() throws {
         let engine = AVAudioEngine()
         self.audioEngine = engine
+
+        // Select specific input device if requested
+        if let deviceId = self.deviceId {
+            try setInputDevice(engine: engine, uid: deviceId)
+        }
 
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)

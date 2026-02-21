@@ -9,6 +9,8 @@ var checkPermissionOnly: Bool = false
 var enableLevels: Bool = false
 var levelIntervalMs: Int = 50
 var fftBins: Int = 128
+var listDevicesOnly: Bool = false
+var selectedDeviceId: String? = nil
 
 var args = CommandLine.arguments.dropFirst()
 while let arg = args.first {
@@ -46,6 +48,15 @@ while let arg = args.first {
         }
         fftBins = value
         args = args.dropFirst()
+    case "--list-devices":
+        listDevicesOnly = true
+    case "--device-id":
+        guard let next = args.first else {
+            Message.error(code: ErrorCode.invalidArgs, message: "Missing value for --device-id").send()
+            exit(1)
+        }
+        selectedDeviceId = next
+        args = args.dropFirst()
     default:
         Message.error(code: ErrorCode.invalidArgs, message: "Unknown argument: \(arg)").send()
         exit(1)
@@ -54,13 +65,27 @@ while let arg = args.first {
 
 // MARK: - Main
 
+if listDevicesOnly {
+    let devices = MicCaptureEngine.listDevices()
+    let jsonArray: [[String: Any]] = devices.map { [
+        "id": $0.id,
+        "name": $0.name,
+        "isDefault": $0.isDefault
+    ] }
+    if let data = try? JSONSerialization.data(withJSONObject: jsonArray),
+       let string = String(data: data, encoding: .utf8) {
+        print(string)
+    }
+    exit(0)
+}
+
 let format = AudioFormat(
     sampleRate: Float64(sampleRate),
     channels: 1,
     bitDepth: 16
 )
 
-let engine = MicCaptureEngine(format: format, chunkDurationMs: chunkDurationMs, enableLevels: enableLevels, fftBins: fftBins, levelIntervalMs: levelIntervalMs)
+let engine = MicCaptureEngine(format: format, chunkDurationMs: chunkDurationMs, enableLevels: enableLevels, fftBins: fftBins, levelIntervalMs: levelIntervalMs, deviceId: selectedDeviceId)
 
 if checkPermissionOnly {
     let status = engine.checkPermission()
