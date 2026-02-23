@@ -31,6 +31,26 @@ function bar(value: number, width = 30): string {
   return "█".repeat(filled) + "░".repeat(width - filled);
 }
 
+function spectrum(fft: { freq: number; magnitude: number }[], cols = 64): string {
+  if (fft.length === 0) return " ".repeat(cols);
+  const chars = " ▁▂▃▄▅▆▇█";
+  const FLOOR_DB = -60;
+  const bucketSize = fft.length / cols;
+  let result = "";
+  for (let i = 0; i < cols; i++) {
+    const start = Math.floor(i * bucketSize);
+    const end = Math.max(start + 1, Math.floor((i + 1) * bucketSize));
+    let max = 0;
+    for (let j = start; j < end; j++) {
+      if (fft[j].magnitude > max) max = fft[j].magnitude;
+    }
+    const db = max > 0 ? 20 * Math.log10(max) : FLOOR_DB;
+    const normalized = Math.max(0, Math.min(1, (db - FLOOR_DB) / -FLOOR_DB));
+    result += chars[Math.min(8, Math.floor(normalized * 9))];
+  }
+  return result;
+}
+
 // ─────────────────────────────────────────────
 // TEST 1: List input devices
 // ─────────────────────────────────────────────
@@ -80,13 +100,10 @@ async function testAudioLevels(): Promise<void> {
     levelCount++;
     if (event.fft.length > 0) hadFFT = true;
 
-    // Print a VU meter every 5th event to avoid flooding
+    // Print every 5th frame (~250ms) so the waterfall is readable
     if (levelCount % 5 === 0) {
-      const rmsBar = bar(event.rms);
-      const peakBar = bar(event.peak);
-      console.log(`  RMS:  ${rmsBar} ${(event.rms * 100).toFixed(1)}%`);
-      console.log(`  Peak: ${peakBar} ${(event.peak * 100).toFixed(1)}%`);
-      console.log(`  FFT bins: ${event.fft.length}  |  Source: ${event.source}\n`);
+      const spec = spectrum(event.fft);
+      console.log(`  ${spec}  ${(event.rms * 100).toFixed(1)}%`);
     }
   });
 
