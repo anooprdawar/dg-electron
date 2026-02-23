@@ -80,9 +80,15 @@ export function registerListenForTurn(server: McpServer): void {
         }, args.max_duration_seconds * 1000)
       );
 
+      let rejectOnError!: (err: Error) => void;
+      const errorPromise = new Promise<never>((_, reject) => {
+        rejectOnError = reject;
+      });
+
       dg.on("error", (err: Error) => {
         recordingError = err.message;
         process.stderr.write(`[deepgram-mcp] flux error: ${err.message}\n`);
+        rejectOnError(err);
       });
 
       try {
@@ -110,9 +116,9 @@ export function registerListenForTurn(server: McpServer): void {
       );
 
       try {
-        turnResult = await Promise.race([turnPromise, timeoutPromise]);
+        turnResult = await Promise.race([turnPromise, timeoutPromise, errorPromise]);
       } catch {
-        // timeout — timedOut flag already set
+        // timeout or error — timedOut / recordingError already set
       } finally {
         try {
           await dg.stop();

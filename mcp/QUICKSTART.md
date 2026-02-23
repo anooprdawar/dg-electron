@@ -90,7 +90,7 @@ You should see something like:
 ● deepgram (connected)
   transcribe_audio, record_and_transcribe, analyze_audio,
   summarize_audio, text_to_speech, check_audio_permissions,
-  list_mic_devices
+  list_mic_devices, listen_for_turn
 ```
 
 **If it says "disconnected":** Your API key probably didn't make it through. Quit Claude Code (`/exit`), make sure `echo $DEEPGRAM_API_KEY` prints your key, then run `claude` again from the same terminal window.
@@ -247,6 +247,26 @@ Claude should read `mcp/server.ts` and explain it to you — all triggered by yo
 
 ---
 
+## Step 13 — Try continuous voice mode
+
+This is the most natural way to work with Claude. Type:
+
+```
+/voice-continuous
+```
+
+Claude will announce that continuous voice mode is active. Then just **speak naturally** — unlike `/listen`, you don't need to specify a duration. Deepgram Flux detects when you've finished your thought and responds automatically.
+
+Try saying:
+> *"What are the source files in the mcp tools directory?"*
+
+Claude will answer, then immediately say **"Ready for your next command…"** and start listening again — without you typing anything.
+
+To stop, just say:
+> *"Stop listening"* or *"Exit voice mode"*
+
+---
+
 ## You're done! 🎉
 
 Here's what you just tested:
@@ -261,10 +281,17 @@ Here's what you just tested:
 | ✅ | Text-to-speech playback |
 | ✅ | `/listen` slash command |
 | ✅ | Voice-to-code via natural language |
+| ✅ | Continuous voice mode with Flux end-of-turn detection |
 
 ---
 
 ## What to try next
+
+**Use continuous voice mode for hands-free coding:**
+```
+/voice-continuous
+```
+Speak commands naturally — Flux detects when you're done, responds, and listens again. Say "stop listening" to end.
 
 **Transcribe a meeting recording:**
 ```
@@ -298,3 +325,5 @@ What are the main topics and overall sentiment in /path/to/podcast.mp3
 | "No speech detected" | Speak immediately after Claude's "I'm recording" message; speak loudly and clearly |
 | No sound from `/speak` | Check Mac volume; try `afplay /tmp/deepgram-tts-*.mp3` in terminal |
 | "Binary not found" error | Run `ls bin/dg-mic-audio` — if missing, you need to rebuild: `npm run build:native` |
+| `listen_for_turn` times out immediately | Flux requires a valid API key with Flux access — verify with `echo $DEEPGRAM_API_KEY` |
+| Continuous mode stops after one turn | Say `/voice-continuous` again; check that your Deepgram plan includes Flux (`flux-general-en`) |

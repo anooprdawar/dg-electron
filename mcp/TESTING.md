@@ -59,7 +59,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 
 ---
 
-## TEST 2: All 7 tools are registered
+## TEST 2: All 8 tools are registered
 
 **What this tests:** Every tool was compiled and wired up in `server.ts`.
 
@@ -71,11 +71,12 @@ cd /path/to/dg-electron
   | grep -o '"name":"[^"]*"' | grep -v '"name":"deepgram"' | sort
 ```
 
-**PASS if:** You see all 7 of these (order doesn't matter):
+**PASS if:** You see all 8 of these (order doesn't matter):
 ```
 "name":"analyze_audio"
 "name":"check_audio_permissions"
 "name":"list_mic_devices"
+"name":"listen_for_turn"
 "name":"record_and_transcribe"
 "name":"summarize_audio"
 "name":"text_to_speech"
@@ -369,12 +370,61 @@ In Claude Code:
 
 ---
 
+## TEST 19: `listen_for_turn` — Flux end-of-turn detection
+
+**What this tests:** Deepgram Flux starts recording, detects when you stop speaking, and returns without needing a fixed duration.
+
+> Make sure microphone permission is `granted` (Test 4) before running this.
+
+In Claude Code, say:
+```
+Listen for my next voice command using listen_for_turn
+```
+
+When Claude says it's listening, **speak naturally** (no need to rush). Say something like:
+> "What files are in the src directory?"
+
+Then **stop speaking** and wait. Flux will detect you're done and return.
+
+**PASS if:**
+1. Claude returns a `## Voice Recording Transcript` section with your words
+2. The output includes **End-of-turn confidence** (a percentage) — this is the Flux signal
+3. Claude returned **without you specifying a duration** — it fired automatically when you finished speaking
+
+**What failure looks like:**
+- `Flux connection closed unexpectedly` → your API key may not have access to `flux-general-en`; verify your Deepgram plan includes Flux
+- Times out after 60s → Flux didn't receive audio; check mic permission and that the binary is running
+
+---
+
+## TEST 20: `/voice-continuous` — continuous hands-free voice loop
+
+**What this tests:** The full continuous voice mode — Claude listens, responds, and immediately listens again.
+
+In Claude Code, type:
+```
+/voice-continuous
+```
+
+**PASS if:**
+1. Claude announces continuous voice mode is active
+2. You speak a command (e.g. "List the files in the mcp directory") and Claude executes it
+3. Claude immediately says "Ready for your next command…" and calls `listen_for_turn` again — **without you doing anything**
+4. You speak a second command and Claude executes it
+5. You say "stop listening" and Claude exits the loop cleanly
+
+**Bonus — test stop phrases:**
+- Say "exit voice mode" → Claude should stop
+- Say "goodbye" → Claude should stop
+
+---
+
 ## Quick reference checklist
 
 | # | Test | Tool / Feature | Pass Condition |
 |---|------|---------------|----------------|
 | 1 | Server starts | Server binary | Valid JSON-RPC initialize response |
-| 2 | All tools registered | server.ts | 7 tool names in `tools/list` |
+| 2 | All tools registered | server.ts | 8 tool names in `tools/list` |
 | 3 | MCP connects to Claude | `.mcp.json` | `deepgram` shows connected in `/mcp` |
 | 4 | Permissions check | `check_audio_permissions` | Table with mic + system audio status |
 | 5 | List mics | `list_mic_devices` | At least one device with ID shown |
@@ -391,6 +441,8 @@ In Claude Code:
 | 16 | Voice mode skill | `voice-to-claude` | Activates from "I want voice mode" |
 | 17 | Transcribe skill | `transcribe-and-analyze` | Activates from natural file description |
 | 18 | End-to-end voice coding | All of the above | File opened based on spoken instruction |
+| 19 | Flux end-of-turn detection | `listen_for_turn` | Transcript returned automatically when speaking stops; includes end-of-turn confidence |
+| 20 | Continuous voice mode | `/voice-continuous` | Claude loops: listen → execute → listen; stops on "stop listening" |
 
 ---
 
@@ -447,3 +499,25 @@ Use text_to_speech with voice aura-asteria-en to say "hello"
 - Speak in English for best results
 - Reduce background noise
 - For batch mode, 8–15 seconds of clear speech works best
+
+### `listen_for_turn` fails or Flux connection closes immediately
+
+Flux uses a separate v2 API endpoint (`wss://api.deepgram.com/v2/listen`) with the `flux-general-en` model. Common causes:
+
+- **API key doesn't have Flux access** — check your Deepgram plan at [console.deepgram.com](https://console.deepgram.com); Flux may require a paid plan
+- **Invalid API key** → you'll see a 401 error; re-export your key and restart Claude
+- **Connection timeout** — try a different network; Flux is a streaming endpoint and requires a stable connection
+
+### `listen_for_turn` times out without returning
+
+Flux detected no end-of-turn signal within `max_duration_seconds` (default 60s). This means:
+- Audio wasn't reaching Deepgram — check mic permission
+- You didn't speak during the window
+- The Flux model didn't detect a complete turn — try speaking a full sentence with a clear ending
+
+### Continuous voice mode stops after one turn
+
+The `/voice-continuous` loop calls `listen_for_turn` repeatedly. If it stops early:
+- Check if an error was returned by the tool call (permission, API key, etc.)
+- Make sure you're not accidentally saying a stop phrase ("stop", "goodbye", "exit")
+- Restart with `/voice-continuous` again

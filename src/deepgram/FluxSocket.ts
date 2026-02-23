@@ -6,14 +6,12 @@ import { ConnectionError } from "../errors.js";
 import { Logger } from "../util/logger.js";
 
 const FLUX_API_URL = "wss://api.deepgram.com/v2/listen";
-const KEEPALIVE_INTERVAL_MS = 5000;
 
 export class FluxSocket extends EventEmitter {
   private ws: WebSocket | null = null;
   private readonly options: FluxOptions;
   private readonly sampleRate: number;
   private readonly logger: Logger;
-  private keepaliveTimer: ReturnType<typeof setInterval> | null = null;
   private closing = false;
 
   constructor(
@@ -43,7 +41,6 @@ export class FluxSocket extends EventEmitter {
 
   async close(): Promise<void> {
     this.closing = true;
-    this.stopKeepalive();
 
     if (!this.ws) return;
 
@@ -66,6 +63,11 @@ export class FluxSocket extends EventEmitter {
         resolve();
       });
 
+      try {
+        this.ws.send(JSON.stringify({ type: "CloseStream" }));
+      } catch {
+        // ignore send errors on close
+      }
       this.ws.close();
     });
   }
@@ -89,7 +91,6 @@ export class FluxSocket extends EventEmitter {
 
       ws.on("open", () => {
         this.logger.info("Flux connected");
-        this.startKeepalive();
         this.emit("open");
         resolve();
       });
@@ -105,7 +106,6 @@ export class FluxSocket extends EventEmitter {
 
       ws.on("close", (code, reason) => {
         this.logger.debug(`Flux closed: code=${code} reason=${reason.toString()}`);
-        this.stopKeepalive();
         if (!this.closing) {
           this.emit(
             "error",
@@ -158,7 +158,6 @@ export class FluxSocket extends EventEmitter {
     const params = new URLSearchParams();
     params.set("encoding", "linear16");
     params.set("sample_rate", String(this.sampleRate));
-    params.set("channels", "1");
     params.set("model", this.options.model ?? "flux-general-en");
 
     if (this.options.language) {
@@ -172,25 +171,5 @@ export class FluxSocket extends EventEmitter {
     }
 
     return `${FLUX_API_URL}?${params.toString()}`;
-  }
-
-  private startKeepalive(): void {
-    this.stopKeepalive();
-    this.keepaliveTimer = setInterval(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        try {
-          this.ws.send(JSON.stringify({ type: "KeepAlive" }));
-        } catch {
-          this.logger.warn("Failed to send keepalive");
-        }
-      }
-    }, KEEPALIVE_INTERVAL_MS);
-  }
-
-  private stopKeepalive(): void {
-    if (this.keepaliveTimer) {
-      clearInterval(this.keepaliveTimer);
-      this.keepaliveTimer = null;
-    }
   }
 }
