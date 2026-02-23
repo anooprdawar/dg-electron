@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "deepgram": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["mcp/dist/server.js"],
+      "env": {
+        "DEEPGRAM_API_KEY": "${DEEPGRAM_API_KEY}",
+        "DG_ELECTRON_BINARY_DIR": "${PWD}/bin"
+      }
+    }
+  }
+}

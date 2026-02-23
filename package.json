@@ -21,6 +21,8 @@
   ],
   "scripts": {
     "build": "tsup",
+    "build:mcp": "cd mcp && npm install && npm run build",
+    "build:all": "npm run build && npm run build:mcp",
     "build:native": "cd native && ./scripts/build-universal.sh",
     "dev": "tsup --watch",
     "test": "vitest run",

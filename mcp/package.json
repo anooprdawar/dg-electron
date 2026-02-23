@@ -1,0 +1,27 @@
+{
+  "name": "@deepgram/electron-mcp",
+  "version": "0.1.0",
+  "description": "Deepgram MCP server for Claude Code — transcription, live recording, TTS, and audio intelligence",
+  "type": "module",
+  "main": "dist/server.js",
+  "bin": {
+    "deepgram-mcp": "./dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@deepgram/electron": "file:../",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "os": [
+    "darwin"
+  ],
+  "license": "MIT"
+}
