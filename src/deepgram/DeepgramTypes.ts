@@ -1,3 +1,18 @@
+/** Deepgram Flux v2 TurnInfo WebSocket response */
+export interface FluxTurnInfo {
+  type: "TurnInfo" | "Connected" | "Error";
+  request_id?: string;
+  sequence_id?: number;
+  event?: "Update" | "StartOfTurn" | "EagerEndOfTurn" | "TurnResumed" | "EndOfTurn";
+  turn_index?: number;
+  audio_window_start?: number;
+  audio_window_end?: number;
+  transcript?: string;
+  words?: Array<{ word: string; confidence: number }>;
+  end_of_turn_confidence?: number;
+  error?: string;
+}
+
 /** Raw Deepgram WebSocket response */
 export interface DeepgramResponse {
   type: "Results" | "Metadata" | "UtteranceEnd" | "SpeechStarted" | "Error";

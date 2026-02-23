@@ -43,6 +43,29 @@ export interface AudioLevelsConfig {
 /** Transcription mode */
 export type TranscriptionMode = "streaming" | "batch";
 
+/** Flux end-of-turn event emitted when the speaker finishes a turn */
+export interface FluxTurnEvent {
+  transcript: string;
+  words: Array<{ word: string; confidence: number }>;
+  end_of_turn_confidence: number;
+  turn_index: number;
+  event: "EagerEndOfTurn" | "EndOfTurn";
+}
+
+/** Deepgram Flux connection options */
+export interface FluxOptions {
+  /** Deepgram API key */
+  apiKey: string;
+  /** Model to use (default: "flux-general-en") */
+  model?: string;
+  /** Language code (default: "en") */
+  language?: string;
+  /** End-of-turn confidence threshold (0.1–0.99) */
+  eotThreshold?: number;
+  /** Eager end-of-turn threshold (0.3–0.9), enables speculative EagerEndOfTurn events */
+  eagerEotThreshold?: number;
+}
+
 /** Permission status for an audio source */
 export type PermissionStatus = "granted" | "denied" | "unknown";
 

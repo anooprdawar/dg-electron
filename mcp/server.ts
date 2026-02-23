@@ -7,6 +7,7 @@ import { registerSummarizeAudio } from "./tools/summarizeAudio.js";
 import { registerTextToSpeech } from "./tools/textToSpeech.js";
 import { registerCheckPermissions } from "./tools/checkPermissions.js";
 import { registerListMicDevices } from "./tools/listMicDevices.js";
+import { registerListenForTurn } from "./tools/listenForTurn.js";
 
 // IMPORTANT: Never write to stdout after transport.connect() —
 // stdout is exclusively used for JSON-RPC messages.
@@ -32,6 +33,7 @@ registerSummarizeAudio(server);
 registerTextToSpeech(server);
 registerCheckPermissions(server);
 registerListMicDevices(server);
+registerListenForTurn(server);
 
 const transport = new StdioServerTransport();
 
