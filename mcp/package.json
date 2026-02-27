@@ -23,5 +23,8 @@
   "os": [
     "darwin"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "overrides": {
+    "hono": "^4.12.2"
+  }
 }
